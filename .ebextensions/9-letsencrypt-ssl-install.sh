@@ -14,84 +14,65 @@ echo $ACCOUNT_ID
 echo $REGION
 echo "bonjour"
 
-URL="s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/ssl.conf"
+URL="s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem"
 
 count=$(aws s3 ls $URL | wc -l)
 if [ $count -gt 0 ]
 then
   echo "SSL Already Exists on S3"
- # Copy from S3 bucket
+  # Copy from S3 bucket
 
-    if [ ! -f /etc/httpd/conf.d/ssl.conf ] ; then
+  if [ ! -f /etc/letsencrypt/live/ebcert/privkey.pem ] ; then
 
-	echo "copying from bucket"
-        aws s3 cp s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/ssl.conf /etc/httpd/conf.d/ssl.conf
-        aws s3 cp s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/cert.pem /etc/letsencrypt/live/$LE_SSL_DOMAIN/cert.pem
-        aws s3 cp s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem /etc/letsencrypt/live/$LE_SSL_DOMAIN/privkey.pem
-        aws s3 cp s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/fullchain.pem /etc/letsencrypt/live/$LE_SSL_DOMAIN/fullchain.pem
+    echo "copying from bucket"
+    aws s3 cp s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem /etc/letsencrypt/live/${LE_SSL_DOMAIN}/privkey.pem
+    aws s3 cp s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/fullchain.pem /etc/letsencrypt/live/${LE_SSL_DOMAIN}/fullchain.pem
 
-        # restart
-        sudo service httpd restart
+    ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert
 
-    fi
-
+    # restart
+    sudo cp /opt/passenger-standalone.json /var/app/current/
+    sudo service passenger restart
+  fi
 else
-  echo "does not exist on s3"
+  echo "does not exist on s3 - $URL"
 fi
 
 # Install if no SSL certificate installed or SSL install on deploy is true
 
-if [[ ("$LE_INSTALL_SSL_ON_DEPLOY" = true) || (! -f /etc/httpd/conf.d/ssl.conf) ]] ; then
+if [[ ("$LE_INSTALL_SSL_ON_DEPLOY" = true) || (! -f /etc/letsencrypt/live/ebcert/privkey.pem) ]] ; then
 
-    # Install mod_ssl
-    sudo yum -y install mod24_ssl
+  SECONDS=0
 
-    # Install json query and get document root
-    sudo yum -y install jq
+  # Wait until domain is resolving to ec2 instance
+  echo "Pinging $LE_SSL_DOMAIN until online..."
+  while ! timeout 0.2 ping -c 1 -n $LE_SSL_DOMAIN &> /dev/null
+  do
+    SECONDS=$[$SECONDS +1]
+    if [ $SECONDS -gt 30 ]
+    then
+      echo "$SECONDS seconds timeout waiting to ping, lets exit";
+      exit 1;
+    fi
+  done
+  echo "Pinging $LE_SSL_DOMAIN successful"
+  
+  echo "installing the certificate"
+  # Install certbot
+  sudo mkdir -p /certbot
+  cd /certbot || exit
+  sudo wget https://dl.eff.org/certbot-auto && sudo chmod a+x certbot-auto
 
-    # Assign value to DOCUMENT_ROOT
-    DOCUMENT_ROOT=$(sudo /opt/elasticbeanstalk/bin/get-config optionsettings | jq '."aws:elasticbeanstalk:container:php:phpini"."document_root"' -r)
+  # Create certificate and authenticate
+  sudo ./certbot-auto certonly --debug --non-interactive --email ${LE_EMAIL} --agree-tos --standalone -d ${LE_SSL_DOMAIN} -d www.${LE_SSL_DOMAIN} --keep-until-expiring --pre-hook "service passenger stop" --post-hook "service passenger start"
 
-   SECONDS=0
+  ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert
 
-    # Wait until domain is resolving to ec2 instance
-    echo "Pinging $LE_SSL_DOMAIN until online..."
-    while ! timeout 0.2 ping -c 1 -n $LE_SSL_DOMAIN &> /dev/null
-    do
-        SECONDS=$[$SECONDS +1]
-        if [ $SECONDS -gt 30 ]
-        then
-            echo "$SECONDS seonds timeout waiting to ping, lets exit";
-            exit 1;
-        fi
-    done
-    echo "Pinging $LE_SSL_DOMAIN successful"
+  # Install crontab
+  sudo crontab /tmp/cronjob
+  echo 'copying certificate to S3'
 
-    # Install certbot
-    sudo mkdir -p /certbot
-    cd /certbot || exit
-    wget https://dl.eff.org/certbot-auto;chmod a+x certbot-auto
-
-    # Create certificate and authenticate
-    sudo ./certbot-auto certonly -d "$LE_SSL_DOMAIN" --agree-tos --email "$LE_EMAIL" --webroot --webroot-path /var/app/current"$DOCUMENT_ROOT" --debug --non-interactive --renew-by-default
-
-    # Configure ssl.conf
-    sudo mv /etc/httpd/conf.d/ssl.conf.template /etc/httpd/conf.d/ssl.conf
-    sudo sed -i -e "s/{DOMAIN}/$LE_SSL_DOMAIN/g" /etc/httpd/conf.d/ssl.conf
-
-    # Install crontab
-    sudo crontab /tmp/cronjob
-
-    # Start apache
-    sudo service httpd restart
-
+  aws s3 cp /etc/letsencrypt/live/${LE_SSL_DOMAIN}/privkey.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem
+  aws s3 cp /etc/letsencrypt/live/${LE_SSL_DOMAIN}/fullchain.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/fullchain.pem
 fi
 
-echo 'copying certificate'
-
-# Copy cert to S3 regardless of outcome
-
-aws s3 cp /etc/httpd/conf.d/ssl.conf s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/ssl.conf
-aws s3 cp /etc/letsencrypt/live/$LE_SSL_DOMAIN/cert.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/cert.pem
-aws s3 cp /etc/letsencrypt/live/$LE_SSL_DOMAIN/privkey.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem
-aws s3 cp /etc/letsencrypt/live/$LE_SSL_DOMAIN/fullchain.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/fullchain.pem
