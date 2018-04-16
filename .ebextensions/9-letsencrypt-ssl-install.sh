@@ -43,6 +43,8 @@ if [[ (! -f /certbot/certbot-auto) ]] ; then
   sudo mkdir -p /certbot
   cd /certbot || exit
   sudo wget https://dl.eff.org/certbot-auto && sudo chmod a+x certbot-auto
+  #install dependencies without asking
+  sudo /certbot/certbot-auto renew --debug
 fi
 
 # Install certbot for renewal  no SSL certificate installed or SSL install on deploy is true
