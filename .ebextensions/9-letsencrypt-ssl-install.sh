@@ -38,7 +38,14 @@ else
   echo "does not exist on s3 - $URL"
 fi
 
-# Install if no SSL certificate installed or SSL install on deploy is true
+# Install certboot tool if not installed
+if [[ (! -f /certbot/certbot-auto) ]] ; then
+  sudo mkdir -p /certbot
+  cd /certbot || exit
+  sudo wget https://dl.eff.org/certbot-auto && sudo chmod a+x certbot-auto
+fi
+
+# Install certbot for renewal  no SSL certificate installed or SSL install on deploy is true
 
 if [[ ("$LE_INSTALL_SSL_ON_DEPLOY" = true) || (! -f /etc/letsencrypt/live/ebcert/privkey.pem) ]] ; then
 
@@ -58,12 +65,8 @@ if [[ ("$LE_INSTALL_SSL_ON_DEPLOY" = true) || (! -f /etc/letsencrypt/live/ebcert
   echo "Pinging $LE_SSL_DOMAIN successful"
   
   echo "installing the certificate"
-  # Install certbot
-  sudo mkdir -p /certbot
-  cd /certbot || exit
-  sudo wget https://dl.eff.org/certbot-auto && sudo chmod a+x certbot-auto
-
   # Create certificate and authenticate
+  cd /certbot || exit
   sudo ./certbot-auto certonly --debug --non-interactive --email ${LE_EMAIL} --agree-tos --standalone -d ${LE_SSL_DOMAIN} -d www.${LE_SSL_DOMAIN} --keep-until-expiring --pre-hook "service passenger stop" --post-hook "service passenger start"
 
   ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert
