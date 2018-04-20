@@ -30,9 +30,6 @@ then
 
     ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert
 
-    # restart
-    sudo cp /opt/passenger-standalone.json /var/app/current/
-    sudo service passenger restart
   fi
 else
   echo "does not exist on s3 - $URL"
@@ -74,10 +71,13 @@ if [[ ("$LE_INSTALL_SSL_ON_DEPLOY" = true) || (! -f /etc/letsencrypt/live/ebcert
   ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert
 
   # Install crontab
-  sudo crontab /tmp/cronjob
+  sudo crontab /tmp/cron
   echo 'copying certificate to S3'
 
   aws s3 cp /etc/letsencrypt/live/${LE_SSL_DOMAIN}/privkey.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem
   aws s3 cp /etc/letsencrypt/live/${LE_SSL_DOMAIN}/fullchain.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/fullchain.pem
 fi
 
+# restart
+sudo cp /opt/passenger-standalone.json /var/app/current/
+sudo service passenger restart
