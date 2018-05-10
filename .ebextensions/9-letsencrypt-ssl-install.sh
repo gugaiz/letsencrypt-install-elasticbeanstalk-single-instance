@@ -73,9 +73,7 @@ if [[ ("$LE_INSTALL_SSL_ON_DEPLOY" = true) || (! -f /etc/letsencrypt/live/ebcert
   echo "installing the certificate"
   # Create certificate and authenticate
   cd /certbot || exit
-  sudo ./certbot-auto certonly --debug --non-interactive --email ${LE_EMAIL} --agree-tos --standalone -d ${LE_SSL_DOMAIN} -d www.${LE_SSL_DOMAIN} --expand --renew-with-new-domains --allow-subset-of-names --keep-until-expiring --duplicate --pre-hook "service passenger stop" --post-hook "service passenger start"
-
-  ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert
+  sudo ./certbot-auto certonly --debug --non-interactive --email ${LE_EMAIL} --agree-tos --standalone -d ${LE_SSL_DOMAIN} -d www.${LE_SSL_DOMAIN} --expand --renew-with-new-domains --allow-subset-of-names --keep-until-expiring --duplicate --pre-hook "service passenger stop" --post-hook "ln -snf /etc/letsencrypt/live/${LE_SSL_DOMAIN} /etc/letsencrypt/live/ebcert && service passenger start"
 
   # Install crontab
   sudo crontab /tmp/cron
