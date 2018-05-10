@@ -11,12 +11,12 @@ REGION=$(curl http://169.254.169.254/latest/dynamic/instance-identity/document|g
 echo $ACCOUNT_ID
 echo $REGION
 
-URL="s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/ssl.conf"
-
 echo 'copying certificate'
 
 # Copy cert to S3 regardless of outcome
 
-aws s3 cp /etc/letsencrypt/live/ebcert/privkey.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/privkey.pem
-aws s3 cp /etc/letsencrypt/live/ebcert/fullchain.pem s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/fullchain.pem
+aws s3 cp  --recursive  /etc/letsencrypt/live/ebcert/ s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/certs
+aws s3 cp  --recursive  /etc/letsencrypt/renewal/ s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/renewal
+aws s3 cp  --recursive  /etc/letsencrypt/accounts/ s3://elasticbeanstalk-$REGION-$ACCOUNT_ID/ssl/$LE_SSL_DOMAIN/accounts
+
 
